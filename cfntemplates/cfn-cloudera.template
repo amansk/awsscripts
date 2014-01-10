@@ -1,0 +1,268 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+ "Description" : "This template creates a VPC infrastructure for a single-AZ, multi-tier deployment of Hadoop infrastructure.",
+  "Parameters" : {
+	  
+	    "KeyPairName" : { "Type" : "String" },
+ 		"NATInstanceType" : { "Type" : "String", "Default" : "m1.large"  },
+ 		"CMInstanceType" : { "Type" : "String" , "Default" : "m1.large" },
+		"DMZCIDR" : { "Type" : "String", "Default" : "10.0.1.0/24"  },
+		"HDPCIDR" : { "Type" : "String", "Default" : "10.0.2.0/24"  },
+		"VPCCIDR" : { "Type" : "String", "Default" : "10.0.0.0/16"  },
+		"AZ" : { "Type" : "String", "Default" : "us-west-2a"  },
+		"DomainDNSName" : { "Type" : "String",  "Default" : "mycluster.com"  }
+	},
+	
+  "Resources" : {
+
+		"VPC" : {
+			"Type" : "AWS::EC2::VPC",
+			"Properties" : {
+				"CidrBlock" : { "Ref" : "VPCCIDR" },
+				"Tags" : [
+					{"Key" : "Application", "Value" : { "Ref" : "AWS::StackName"} },
+					{"Key" : "Network", "Value" : "Public" }
+				]
+			}
+		},
+		
+		"DHCPOptions" : {
+			"Type" : "AWS::EC2::DHCPOptions",
+			"Properties" : {
+				"DomainName" : { "Ref" : "DomainDNSName"},
+				"DomainNameServers" : ["AmazonProvidedDNS"]
+			}
+		},
+		
+		"VPCDHCPOptionsAssociation" : {
+			"Type" : "AWS::EC2::VPCDHCPOptionsAssociation",
+			"Properties" : {
+				"VpcId" : {"Ref" : "VPC"},
+				"DhcpOptionsId" : {"Ref" : "DHCPOptions"}
+			}
+		},
+				
+		"DMZSubnet" : {
+			"Type" : "AWS::EC2::Subnet",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"CidrBlock" : { "Ref" : "DMZCIDR" },
+				"AvailabilityZone" : { "Ref" : "AZ" },
+				"Tags" : [
+					{"Key" : "Application", "Value" : { "Ref" : "AWS::StackName"} },
+					{"Key" : "Network", "Value" : "Public" },
+					{"Key" : "Role", "Value" : "DMZ Subnet" }
+				]
+			}
+		},
+		
+		"HadoopSubnet" : {
+			"Type" : "AWS::EC2::Subnet",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"CidrBlock" : { "Ref" : "HDPCIDR" },
+				"AvailabilityZone" : { "Ref" : "AZ" },
+				"Tags" : [
+					{"Key" : "Application", "Value" : { "Ref" : "AWS::StackName"} },
+					{"Key" : "Network", "Value" : "Private" },
+					{"Key" : "Role", "Value" : "Hadoop Subnet" }
+				]
+			}
+		},
+
+		"InternetGateway" : {
+			"Type" : "AWS::EC2::InternetGateway",
+			"Properties" : {
+				"Tags" : [
+					{"Key" : "Application", "Value" : { "Ref" : "AWS::StackName"} },
+					{"Key" : "Network", "Value" : "Public" }
+				]
+			}
+		},
+		"AttachGateway" : {
+			"Type" : "AWS::EC2::VPCGatewayAttachment",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"InternetGatewayId" : { "Ref" : "InternetGateway" }
+			}
+		},
+		"DMZRouteTable" : {
+			"Type" : "AWS::EC2::RouteTable",
+			"Properties" : {
+				"VpcId" : {"Ref" : "VPC"},
+				"Tags" : [
+					{"Key" : "Application", "Value" : { "Ref" : "AWS::StackName"} },
+					{"Key" : "Network", "Value" : "DMZ" }
+				]
+			}
+		},
+		
+		"DMZRoute" : {
+			"Type" : "AWS::EC2::Route",
+			"Properties" : {
+				"RouteTableId" : { "Ref" : "DMZRouteTable" },
+				"DestinationCidrBlock" : "0.0.0.0/0",
+				"GatewayId" : { "Ref" : "InternetGateway" }
+			}
+		},
+		
+		"DMZSubnetRouteTableAssociation" : {
+			"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+			"Properties" : {
+				"SubnetId" : { "Ref" : "DMZSubnet" },
+				"RouteTableId" : { "Ref" : "DMZRouteTable" }
+			}
+		},
+		
+		"PrivateRouteTable" : {
+			"Type" : "AWS::EC2::RouteTable",
+			"Properties" : {
+				"VpcId" : {"Ref" : "VPC"},
+				"Tags" : [
+					{"Key" : "Application", "Value" : { "Ref" : "AWS::StackName"} },
+					{"Key" : "Network", "Value" : "AZ Private" }
+				]
+			}
+		},
+		
+		"PrivateRoute" : {
+			"Type" : "AWS::EC2::Route",
+			"Properties" : {
+				"RouteTableId" : { "Ref" : "PrivateRouteTable" },
+				"DestinationCidrBlock" : "0.0.0.0/0",
+				"InstanceId" : { "Ref" : "NAT" }
+			}
+		},
+		
+		"HadoopSubnetRouteTableAssociation" : {
+			"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+			"Properties" : {
+				"SubnetId" : { "Ref" : "HadoopSubnet" },
+				"RouteTableId" : { "Ref" : "PrivateRouteTable" }
+			}
+		},
+		
+		"NATEIP" : {
+			"Type" : "AWS::EC2::EIP",
+			"Properties" : {
+				"Domain" : "vpc",
+				"InstanceId" : { "Ref" : "NAT" }
+			}
+		},
+		
+		"CMEIP" : {
+			"Type" : "AWS::EC2::EIP",
+			"Properties" : {
+				"Domain" : "vpc",
+				"InstanceId" : { "Ref" : "ClouderaManager" }
+			}
+		},
+		
+		"NATSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				"GroupDescription" : "Enables SSH access to NAT in AZ via port 22",
+				"VpcId" : {"Ref" : "VPC"},
+				"SecurityGroupIngress" : [ 
+					{ "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" },
+					{ "IpProtocol" : "icmp", "FromPort" : "-1", "ToPort" : "-1", "CidrIp" : "0.0.0.0/0" },
+					{ "IpProtocol" : "-1", "FromPort" : "1", "ToPort" : "65535", "CidrIp" : { "Ref" : "HDPCIDR" } },
+					{ "IpProtocol" : "icmp", "FromPort" : "-1", "ToPort" : "-1", "CidrIp" : { "Ref" : "HDPCIDR" } }
+				]
+			}
+		},
+		
+		"CMSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				"GroupDescription" : "Enables SSH and Web access to Cloudera Manager",
+				"VpcId" : {"Ref" : "VPC"},
+				"SecurityGroupIngress" : [ 
+					{ "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" },
+					{ "IpProtocol" : "tcp", "FromPort" : "7180", "ToPort" : "7180", "CidrIp" : "0.0.0.0/0" },
+					{ "IpProtocol" : "tcp", "FromPort" : "7182", "ToPort" : "7182", "CidrIp" : "0.0.0.0/0" },
+					{ "IpProtocol" : "tcp", "FromPort" : "7183", "ToPort" : "7183", "CidrIp" : "0.0.0.0/0" },
+					{ "IpProtocol" : "tcp", "FromPort" : "7432", "ToPort" : "7432", "CidrIp" : "0.0.0.0/0" },
+					{ "IpProtocol" : "icmp", "FromPort" : "-1", "ToPort" : "-1", "CidrIp" : "0.0.0.0/0" },
+					{ "IpProtocol" : "-1", "FromPort" : "1", "ToPort" : "65535", "CidrIp" : { "Ref" : "HDPCIDR" } },
+					{ "IpProtocol" : "icmp", "FromPort" : "-1", "ToPort" : "-1", "CidrIp" : { "Ref" : "HDPCIDR" } }
+				]
+			}
+		},
+		
+		"NAT" : {
+			"Type" : "AWS::EC2::Instance",
+			"Properties" : { 
+				"ImageId" : "ami-52ff7262",
+				"InstanceType" : { "Ref" : "NATInstanceType" },
+				"SubnetId" : { "Ref" : "DMZSubnet" },
+				"Tags" : [ {
+					"Key" : "Name",
+					"Value" : "NAT"
+				} ],
+				"SecurityGroupIds" : [ { "Ref" : "NATSecurityGroup" } ],
+				"KeyName" : { "Ref" : "KeyPairName" },
+				"SourceDestCheck" : "false"
+			}
+		},
+
+		"ClouderaManager": {  
+			"Type" : "AWS::EC2::Instance",
+			"DependsOn" : "NAT",
+			"Properties": {
+				"ImageId" : "ami-6aad335a",
+				"InstanceType" : { "Ref" : "CMInstanceType" },
+				"SubnetId" : { "Ref" : "DMZSubnet" },
+				"Tags" : [ {
+					"Key" : "Name",
+					"Value" : "CM"
+				} ],
+				"SecurityGroupIds" : [ {"Ref" : "CMSecurityGroup"} ],
+				"KeyName" : { "Ref" : "KeyPairName" },
+				"UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
+					"#!/bin/bash\n",
+					"export DEBIAN_FRONTEND=noninteractive\n",
+					"apt-get --yes install python-pip\n",
+					"pip install cm_api\n",
+					"add-apt-repository 'deb http://archive.cloudera.com/cm4/ubuntu/precise/amd64/cm/ precise-cm4 contrib'\n",
+					"wget http://archive.cloudera.com/cm4/ubuntu/precise/amd64/cm/pool/contrib/o/oracle-j2sdk1.6/oracle-j2sdk1.6_1.6.0+update31_amd64.deb\n",
+					"dpkg -i oracle-j2sdk1.6_1.6.0+update31_amd64.deb\n",
+					"apt-get -f -y install\n",
+					"curl -s http://archive.cloudera.com/cm4/ubuntu/precise/amd64/cm/archive.key | apt-key add -\n",
+					"apt-get update -qq\n",
+					"apt-get --yes --force-yes install cloudera-manager-server-db\n",
+					"apt-get --yes --force-yes install cloudera-manager-daemons\n",
+					"apt-get --yes --force-yes install cloudera-manager-server\n",
+					"service cloudera-scm-server-db start\n",
+					"service cloudera-scm-server start\n"
+				]]}}        
+			}
+		}
+	},
+	"Outputs" : {
+		"VPC" : {
+			"Value" : { "Ref" : "VPC" },
+			"Description" : "VPC Identifier"
+		},
+		"VPCCIDR" : {
+			"Value" : { "Ref" : "VPCCIDR" },
+			"Description" : "CIDR range for the VPC"
+		},
+		"DMZCIDR" : {
+			"Value" : { "Ref" : "DMZCIDR" },
+			"Description" : "CIDR range for the DMZ Subnet"
+		},
+		"HDPCIDR" : {
+			"Value" : { "Ref" : "HDPCIDR" },
+			"Description" : "CIDR range for the Hadoop subnet"
+		},
+		"DMZSubnet" : {
+			"Value" : { "Ref" : "DMZSubnet" },
+			"Description" : "Subnet ID for DMZ"
+		},
+		"HadoopSubnet" : {
+			"Value" : { "Ref" : "HadoopSubnet" },
+			"Description" : "Subnet ID for Hadoop"
+		}
+	}  
+}
