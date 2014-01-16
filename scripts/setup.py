@@ -76,8 +76,9 @@ def list_cfn_stacks():
 	for stack in stacks:
 		print_stack(get_stack(stack.stack_id))
 
-def create_stack(name, template):
+def create_stack(name, template, key, group):
 	cfconn.create_stack(name, template_body = template, parameters = [("KeyPairName",key)])
+	ec2conn.create_placement_group(group)
 
 def get_stack_vpc_id(stack):
 	outputs = get_stack(stack).outputs
@@ -105,7 +106,7 @@ def get_template_string(path):
 	with open(path, 'r') as template:
 		return json.dumps(json.load(template))
 		
-def provision_instances(role, instance_type, count, key, cfn_stack, init_script, region):
+def provision_instances(role, instance_type, count, key, cfn_stack, init_script, region, group):
 	user_data = open(init_script)
 	subnet = get_stack_public_subnet(cfn_stack)
 	interface = boto.ec2.networkinterface.NetworkInterfaceSpecification(subnet_id=subnet, associate_public_ip_address=True)
@@ -122,7 +123,8 @@ def provision_instances(role, instance_type, count, key, cfn_stack, init_script,
 											max_count = count, 
 											network_interfaces = interfaces,
 											block_device_map = bdm, 
-											user_data = user_data.read())
+											user_data = user_data.read(),
+											placement_group = group)
 	for instance in reservation.instances:
 		status = instance.update()
 		while status == "pending":
@@ -157,7 +159,7 @@ if len(sys.argv) == 2:
 	opt = sys.argv[1]
 	if opt == "create_network_context":
 		print "Creating network context"
-		create_stack(configs["cfn_stack_name"], get_template_string(configs["cfn_template"]))
+		create_stack(configs["cfn_stack_name"], get_template_string(configs["cfn_template"]), configs["key"])
 	elif opt == 'read_network_context':
 		vpc = get_stack_vpc_id(configs["cfn_stack_name"])
 		public_subnet = get_stack_public_subnet(configs["cfn_stack_name"])
@@ -170,7 +172,8 @@ if len(sys.argv) == 2:
 							configs["key"], 
 							configs["cfn_stack_name"],
 							configs["init_script"],
-							configs["region"])				
+							configs["region"],
+							configs["placement_group"])				
 	elif opt == 'create_masters':
 		print "Creating master instances"
 		provision_instances(configs["master_tag"],
@@ -179,7 +182,8 @@ if len(sys.argv) == 2:
 							configs["key"], 
 							configs["cfn_stack_name"],
 							configs["init_script"],
-							configs["region"])
+							configs["region"],
+							configs["placement_group"])
 	elif opt == 'list_slaves':
 		print "Slave list:"
 		list_instances(configs["slave_tag"],configs["key"])
