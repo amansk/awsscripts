@@ -1,0 +1,11 @@
+region = us-west-2
+slave_type = hs1.8xlarge
+master_type = cc2.8xlarge
+key = ak-west-2
+cfn_stack_name = ak1
+cfn_template = /Users/ak/code/awsscripts/cfntemplates/cfn-cloudera-public-subnet.template
+slave_count = 1
+master_count = 1
+slave_tag = Slave
+master_tag = Master
+init_script = /Users/ak/code/awsscripts/scripts/ec2-node-configuration.sh

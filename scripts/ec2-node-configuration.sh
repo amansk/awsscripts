@@ -12,7 +12,7 @@
 
 #############################################
 # Distribution automatic detection
-echo Distribution detectoin > init_script.log
+echo Distribution detection > init_script.log
 REDHAT=false
 DEBIAN=false
 if [ -f /etc/redhat-release ]; then REDHAT=true; fi
