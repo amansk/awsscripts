@@ -8,6 +8,7 @@ import argparse
 import time
 import sys
 import string
+import argparse
 
 #Parameters
 access_key = os.environ["AWS_ACCESS_KEY"]
@@ -143,9 +144,15 @@ def list_instances(role, key):
 	for instance in reservation[0].instances:
 		print "ID: %s, Public IP: %s, Private IP: %s" % (instance.id, instance.ip_address, instance.private_ip_address)
 		
+#Argument parser
+parser = argparse.ArgumentParser()
+parser.add_argument("-c", "--config", help="Path of config file", required=True)
+parser.add_argument("action", help="Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters")
+args = parser.parse_args()
+		
 #Read config file
 configs = {}
-config_file = open("config")
+config_file = open(args.config)
 for line in config_file:
 	tokens = string.split(line, "=")
 	configs[string.strip(tokens[0])] = string.strip(tokens[1])
@@ -155,43 +162,40 @@ cfconn = boto.cloudformation.connect_to_region(configs["region"], aws_access_key
 ec2conn = boto.ec2.connect_to_region(configs["region"], aws_access_key_id = access_key, aws_secret_access_key = secret_key)
 
 #Starting point of script for all activities
-if len(sys.argv) == 2:
-	opt = sys.argv[1]
-	if opt == "create_network_context":
-		print "Creating network context"
-		create_stack(configs["cfn_stack_name"], get_template_string(configs["cfn_template"]), configs["key"])
-	elif opt == 'read_network_context':
-		vpc = get_stack_vpc_id(configs["cfn_stack_name"])
-		public_subnet = get_stack_public_subnet(configs["cfn_stack_name"])
-		print "VPC ID: %s with public subnet: %s" % (vpc, public_subnet)
-	elif opt == 'create_slaves':
-		print "Creating slave instances"
-		provision_instances(configs["slave_tag"], 
-							configs["slave_type"], 
-							configs["slave_count"], 
-							configs["key"], 
-							configs["cfn_stack_name"],
-							configs["init_script"],
-							configs["region"],
-							configs["placement_group"])				
-	elif opt == 'create_masters':
-		print "Creating master instances"
-		provision_instances(configs["master_tag"],
-							configs["master_type"], 
-							configs["master_count"], 
-							configs["key"], 
-							configs["cfn_stack_name"],
-							configs["init_script"],
-							configs["region"],
-							configs["placement_group"])
-	elif opt == 'list_slaves':
-		print "Slave list:"
-		list_instances(configs["slave_tag"],configs["key"])
-	elif opt == 'list_masters':
-		print "Master list:"
-		list_instances(configs["master_tag"],configs["key"])
-	else:
-		print "Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters"
+opt = args.action
+if opt == 'create_network_context':
+	print "Creating network context"
+	create_stack(configs["cfn_stack_name"], get_template_string(configs["cfn_template"]), configs["key"], configs["placement_group"])
+elif opt == 'read_network_context':
+	vpc = get_stack_vpc_id(configs["cfn_stack_name"])
+	public_subnet = get_stack_public_subnet(configs["cfn_stack_name"])
+	print "VPC ID: %s with public subnet: %s" % (vpc, public_subnet)
+elif opt == 'create_slaves':
+	print "Creating slave instances"
+	provision_instances(configs["slave_tag"], 
+						configs["slave_type"], 
+						configs["slave_count"], 
+						configs["key"], 
+						configs["cfn_stack_name"],
+						configs["init_script"],
+						configs["region"],
+						configs["placement_group"])				
+elif opt == 'create_masters':
+	print "Creating master instances"
+	provision_instances(configs["master_tag"],
+						configs["master_type"], 
+						configs["master_count"], 
+						configs["key"], 
+						configs["cfn_stack_name"],
+						configs["init_script"],
+						configs["region"],
+						configs["placement_group"])
+elif opt == 'list_slaves':
+	print "Slave list:"
+	list_instances(configs["slave_tag"],configs["key"])
+elif opt == 'list_masters':
+	print "Master list:"
+	list_instances(configs["master_tag"],configs["key"])
 else:
 	print "Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters"
 
