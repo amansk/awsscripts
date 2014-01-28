@@ -2,6 +2,7 @@
 
 import boto.cloudformation
 import boto.ec2
+import boto.rds
 import os
 import json
 import argparse
@@ -144,9 +145,32 @@ def list_instances(role, key):
 	for instance in reservation[0].instances:
 		print "ID: %s, Public IP: %s, Private IP: %s" % (instance.id, instance.ip_address, instance.private_ip_address)
 		
+def provision_rds(instance_type, name, size, user, password, param_group_name, params_file):
+	#Setting up RDS parameters
+	rds_params_file = open(params_file)
+	params = {}
+	for line in rds_params_file:
+		tokens = string.split(line,"=")
+		params[string.strip(tokens[0])] = string.strip(tokens[1])
+	rdsconn.create_parameter_group(param_group_name, description = 'Parameter group for Cloudera RDS instance')
+	param_group1 = rdsconn.get_all_dbparameters(param_group_name)
+	param_group2 = rdsconn.get_all_dbparameters(param_group_name, marker = param_group1.Marker)
+	param_group1.get_params()
+	param_group2.get_params()
+	param_group = dict(param_group1.items() + param_group2.items())
+	for param in params.keys():
+		rds_param = param_group.get(param)
+		rds_param.set_value(params[param])
+		rds_param.apply()
+	
+	#Provisioning RDS instance
+	rdsconn.create_dbinstance(name, size, instance_type, master_username=user, master_password=password, param_group=param_group_name)
+	rdsconn.reboot_dbinstance(name)
+	
 #Argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--config", help="Path of config file", required=True)
+parser.add_argument("-r", "--rds_params", help="Path of RDS params file", required=True)
 parser.add_argument("action", help="Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters")
 args = parser.parse_args()
 		
@@ -160,9 +184,12 @@ for line in config_file:
 #Create connections to AWS endpoints
 cfconn = boto.cloudformation.connect_to_region(configs["region"], aws_access_key_id = access_key, aws_secret_access_key = secret_key)
 ec2conn = boto.ec2.connect_to_region(configs["region"], aws_access_key_id = access_key, aws_secret_access_key = secret_key)
+rdsconn = boto.rds.connect_to_region(configs["region"], aws_access_key_id = access_key, aws_secret_access_key = secret_key)
 
 #Starting point of script for all activities
+rds_params_file = args.rds_params
 opt = args.action
+
 if opt == 'create_network_context':
 	print "Creating network context"
 	create_stack(configs["cfn_stack_name"], get_template_string(configs["cfn_template"]), configs["key"], configs["placement_group"])
@@ -190,6 +217,15 @@ elif opt == 'create_masters':
 						configs["init_script"],
 						configs["region"],
 						configs["placement_group"])
+elif opt == 'create_db':
+	print "Creating RDS instance"
+	provision_rds(configs["rds_type"],
+				  configs["rds_name"],
+				  configs["rds_size"],
+				  configs["rds_user"],
+				  configs["rds_password"],
+				  configs["rds_param_group_name"],
+				  configs["rds_param_file"])
 elif opt == 'list_slaves':
 	print "Slave list:"
 	list_instances(configs["slave_tag"],configs["key"])
