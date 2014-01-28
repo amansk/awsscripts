@@ -170,8 +170,7 @@ def provision_rds(instance_type, name, size, user, password, param_group_name, p
 #Argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--config", help="Path of config file", required=True)
-parser.add_argument("-r", "--rds_params", help="Path of RDS params file", required=True)
-parser.add_argument("action", help="Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters")
+parser.add_argument("action", help="Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters, create_db")
 args = parser.parse_args()
 		
 #Read config file
@@ -187,7 +186,6 @@ ec2conn = boto.ec2.connect_to_region(configs["region"], aws_access_key_id = acce
 rdsconn = boto.rds.connect_to_region(configs["region"], aws_access_key_id = access_key, aws_secret_access_key = secret_key)
 
 #Starting point of script for all activities
-rds_params_file = args.rds_params
 opt = args.action
 
 if opt == 'create_network_context':
