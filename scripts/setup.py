@@ -164,13 +164,18 @@ def provision_rds(instance_type, name, size, user, password, param_group_name, p
 		rds_param.apply()
 	
 	#Provisioning RDS instance
-	rdsconn.create_dbinstance(name, size, instance_type, master_username=user, master_password=password, param_group=param_group_name)
-	rdsconn.reboot_dbinstance(name)
+	db = rdsconn.create_dbinstance(name, size, instance_type, master_username=user, master_password=password, param_group=param_group_name)
+	print "Created DB instance: %s" % db.id
+	print "DB instance is currently being set up and the endpoint will be available once it's setup. Use the list_db option to get the endpoint later"
+
+def list_db(name):
+	db = rdsconn.get_all_dbinstances(name)[0]
+	print "Name: %s ; Host: %s ; Port: %s" % (db.id, str(db.endpoint[0]), db.endpoint[1])
 	
 #Argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--config", help="Path of config file", required=True)
-parser.add_argument("action", help="Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters, create_db")
+parser.add_argument("action", help="Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters, create_db, list_db")
 args = parser.parse_args()
 		
 #Read config file
@@ -224,6 +229,9 @@ elif opt == 'create_db':
 				  configs["rds_password"],
 				  configs["rds_param_group_name"],
 				  configs["rds_param_file"])
+elif opt == 'list_db':
+	print"DB instance:"
+	list_db(configs['rds_name'])
 elif opt == 'list_slaves':
 	print "Slave list:"
 	list_instances(configs["slave_tag"],configs["key"])
@@ -231,6 +239,6 @@ elif opt == 'list_masters':
 	print "Master list:"
 	list_instances(configs["master_tag"],configs["key"])
 else:
-	print "Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters"
+	print "Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters, create_db, list_db"
 
 #API calls to CM server for setup
