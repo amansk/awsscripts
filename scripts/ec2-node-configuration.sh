@@ -134,8 +134,14 @@ if $DEBIAN; then
 fi
 #############################################
 
+#############################################
+# Resize root partition
+start_block=`echo p | fdisk /dev/xvda | grep /dev/xvda1 | awk {'print $2'}`
+
+(echo d; echo n; echo p; echo 1; echo $start_block; echo; echo w;) | fdisk /dev/xvda
 
 #############################################
 # Output log for completion
+touch /tmp/init-complete
 echo Initialisation completed on this node >> init_script.log
 #############################################

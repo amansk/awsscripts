@@ -4,10 +4,10 @@
   "Parameters" : {
 	  
 	    "KeyPairName" : { "Type" : "String" },
-		"DMZCIDR" : { "Type" : "String", "Default" : "192.168.1.0/24"  },
-		"VPCCIDR" : { "Type" : "String", "Default" : "192.168.0.0/16"  },
+		"DMZCIDR" : { "Type" : "String", "Default" : "10.1.1.0/24"  },
+		"VPCCIDR" : { "Type" : "String", "Default" : "10.1.0.0/16"  },
 		"AZ" : { "Type" : "String", "Default" : "us-west-2a"  },
-		"DomainDNSName" : { "Type" : "String",  "Default" : "mycluster.com"  }
+		"DomainDNSName" : { "Type" : "String",  "Default" : "us-west-2.compute.internal" }
 	},
 	
   "Resources" : {
@@ -16,6 +16,8 @@
 			"Type" : "AWS::EC2::VPC",
 			"Properties" : {
 				"CidrBlock" : { "Ref" : "VPCCIDR" },
+				"EnableDnsSupport" : "True",
+				"EnableDnsHostnames" : "True",
 				"Tags" : [
 					{"Key" : "Application", "Value" : { "Ref" : "AWS::StackName"} },
 					{"Key" : "Network", "Value" : "Public" }
@@ -62,6 +64,21 @@
 				]
 			}
 		},
+		
+		"ClusterSG" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				  "GroupDescription" : "Cloudera security group",
+			      "SecurityGroupIngress" : [{
+				            "IpProtocol" : "tcp",
+				            "ToPort" : "65535",
+							"FromPort" : "0",
+				            "CidrIp" : "0.0.0.0/0"
+				         }],
+			      "VpcId" : { "Ref" : "VPC" }
+			}
+		},
+		
 		"AttachGateway" : {
 			"Type" : "AWS::EC2::VPCGatewayAttachment",
 			"Properties" : {
@@ -107,6 +124,10 @@
 		"DMZSubnet" : {
 			"Value" : { "Ref" : "DMZSubnet" },
 			"Description" : "Subnet ID for DMZ"
+		},
+		"SecurityGroup" : {
+			"Value" : { "Ref" : "ClusterSG"},
+			"Description" : "Cluster security group"
 		}
 	}  
 }

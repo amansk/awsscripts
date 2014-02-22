@@ -15,8 +15,8 @@ import argparse
 access_key = os.environ["AWS_ACCESS_KEY"]
 secret_key = os.environ["AWS_SECRET_KEY"]
 ami_list = {}
-ami_list["us-east-1"] = "ami-9d0b64f4"
-ami_list["us-west-2"] = "ami-1344d223"
+ami_list["us-east-1"] = {"hs1.8xlarge":"ami-9d0b64f4", "cc2.8xlarge":"ami-9d0b64f4", "m1.xlarge":"ami-a25415cb"}
+ami_list["us-west-2"] = {"hs1.8xlarge":"ami-1344d223", "cc2.8xlarge":"ami-1344d223", "m1.xlarge":"ami-b8a63b88"}
 block_device_list = {}
 block_device_list["hs1.8xlarge"] = [("/dev/xvdb","ephemeral0"), 
 									("/dev/xvdc","ephemeral1"), 
@@ -46,7 +46,11 @@ block_device_list["cc2.8xlarge"] = [("/dev/xvdb","ephemeral0"),
 									("/dev/xvdc","ephemeral1"), 
 									("/dev/xvdd","ephemeral2"), 
 									("/dev/xvde","ephemeral3")]
-
+block_device_list["m1.xlarge"] = [("/dev/xvdf","ephemeral0"), 
+									("/dev/xvdg","ephemeral1"), 
+									("/dev/xvdh","ephemeral2"), 
+									("/dev/xvdi","ephemeral3")]
+root_device = {"hs1.8xlarge":"/dev/sda1", "cc2.8xlarge":"/dev/sda1", "m1.xlarge":"/dev/sda1"}
 
 class MyBaseException(Exception):
     msg ="MyBaseException"
@@ -81,6 +85,7 @@ def list_cfn_stacks():
 def create_stack(name, template, key, group):
 	cfconn.create_stack(name, template_body = template, parameters = [("KeyPairName",key)])
 	ec2conn.create_placement_group(group)
+#	ec2conn.authorize_security_group(group_name="default", ip_protocol="tcp", from_port="22", to_port="22", cidr_ip="0.0.0.0/0")
 
 def get_stack_vpc_id(stack):
 	outputs = get_stack(stack).outputs
@@ -92,6 +97,12 @@ def get_stack_public_subnet(stack):
 	outputs = get_stack(stack).outputs
 	for f in outputs:
 		if f.key == "DMZSubnet":
+			return f.value
+
+def get_stack_cluster_sg(stack):
+	outputs = get_stack(stack).outputs
+	for f in outputs:
+		if f.key == "SecurityGroup":
 			return f.value
 
 def print_stack(stack):
@@ -111,22 +122,28 @@ def get_template_string(path):
 def provision_instances(role, instance_type, count, key, cfn_stack, init_script, region, group):
 	user_data = open(init_script)
 	subnet = get_stack_public_subnet(cfn_stack)
-	interface = boto.ec2.networkinterface.NetworkInterfaceSpecification(subnet_id=subnet, associate_public_ip_address=True)
+	security_group = get_stack_cluster_sg(cfn_stack)
+	print "Subnet: {}".format(subnet)
+	interface = boto.ec2.networkinterface.NetworkInterfaceSpecification(subnet_id=subnet, associate_public_ip_address=True, groups=[security_group])
 	interfaces = boto.ec2.networkinterface.NetworkInterfaceCollection(interface)
 	bdm = boto.ec2.blockdevicemapping.BlockDeviceMapping()
 	for dev,disk in block_device_list[instance_type]:
 		bdt = boto.ec2.blockdevicemapping.BlockDeviceType()
 		bdt.ephemeral_name=disk
 		bdm[dev] = bdt
-	reservation = ec2conn.run_instances(ami_list[region], 
+	root_dev_bdt = boto.ec2.blockdevicemapping.BlockDeviceType()
+	root_dev_bdt.size = 200
+	bdm[root_device[instance_type]] = root_dev_bdt
+	print "Provisioning {} instances".format(count)
+	reservation = ec2conn.run_instances(ami_list[region][instance_type], 
 											key_name=key, 
 											instance_type = instance_type, 
 											min_count = count, 
 											max_count = count, 
 											network_interfaces = interfaces,
 											block_device_map = bdm, 
-											user_data = user_data.read(),
-											placement_group = group)
+											user_data = user_data.read())
+											#placement_group = group)
 	for instance in reservation.instances:
 		status = instance.update()
 		while status == "pending":
@@ -135,6 +152,7 @@ def provision_instances(role, instance_type, count, key, cfn_stack, init_script,
 		if status == "running":
 			instance.add_tag("Type", role)
 			instance.add_tag("CFN stack", cfn_stack)
+			instance.add_tag("Name", cfn_stack + "-" + role)
 			print "Created instance: %s " % instance.id
 		else:
 			print "Instance status for %s: %s" % (instance.id , status)
