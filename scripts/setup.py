@@ -132,7 +132,7 @@ def provision_instances(role, instance_type, count, key, cfn_stack, init_script,
 		bdt.ephemeral_name=disk
 		bdm[dev] = bdt
 	root_dev_bdt = boto.ec2.blockdevicemapping.BlockDeviceType()
-	root_dev_bdt.size = 10
+	root_dev_bdt.size = 100
 	bdm[root_device[instance_type]] = root_dev_bdt
 	print "Provisioning {} instances and linking to CM server on {}".format(count, server)
 	user_data_string = user_data.read()
@@ -234,7 +234,7 @@ elif opt == 'create_slaves':
 						configs["slave_count"], 
 						configs["key"], 
 						configs["cfn_stack_name"],
-						configs["script"],
+						configs["init_script"],
 						configs["region"],
 						configs["placement_group"],
 						args.cmserver)				
@@ -245,7 +245,7 @@ elif opt == 'create_masters':
 						configs["master_count"], 
 						configs["key"], 
 						configs["cfn_stack_name"],
-						configs["script"],
+						configs["init_script"],
 						configs["region"],
 						configs["placement_group"],
 						"localhost",
