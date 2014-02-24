@@ -9,6 +9,9 @@
 # 7) Configure NTP
 #############################################
 
+#############################################
+CMSERVER=false
+#############################################
 
 #############################################
 # Distribution automatic detection
@@ -110,7 +113,7 @@ for i in `ls /dev/xv* | grep -v xvda | grep -v 1 | cut -d"/" -f3`; do
   echo Create partition on /dev/$i >> init_script.log
   (echo o; echo n; echo p; echo 1; echo; echo; echo w) | fdisk /dev/$i &>> init_script.err
   echo Create file system on /dev/$i$one >> init_script.log
-  mkfs.ext4 -m 0 /dev/$i$one &>> init_script.err
+  nice -n 1 mkfs.ext4 /dev/$i$one -O sparse_super,large_file -T largefile4 -m 0 &>> init_script.err
   echo Create mount point /dev/$i$one in /data/$counter >> init_script.log
   mkdir -p /data/$counter  >> init_script.err
   echo Update of fstab script  >> init_script.log
@@ -134,14 +137,38 @@ if $DEBIAN; then
 fi
 #############################################
 
+
 #############################################
 # Resize root partition
 start_block=`echo p | fdisk /dev/xvda | grep /dev/xvda1 | awk {'print $2'}`
 
 (echo d; echo n; echo p; echo 1; echo $start_block; echo; echo w;) | fdisk /dev/xvda
+#############################################
+
+
+#############################################
+#Install Cloudera Manager agents
+wget http://archive.cloudera.com/cm4/redhat/6/x86_64/cm/cloudera-manager.repo
+mv cloudera-manager.repo /etc/yum.repos.d/
+rpm --import http://archive.cloudera.com/cdh4/redhat/6/x86_64/cdh/RPM-GPG-KEY-cloudera
+yum clean all
+yum install jdk cloudera-manager-agent -y
+#############################################
+
+#############################################
+if $CMSERVER; then
+yum install cloudera-manager-server-db cloudera-manager-daemons cloudera-manager-server -y
+cat > /tmp/license << EOF
+cm-license
+EOF
+sed -i "s/CMF_SERVER_ARGS=\"\"/CMF_SERVER_ARGS=\"-l \/tmp\/license\"/" /etc/default/cloudera-scm-server
+else
+sed -i "s/localhost/master-node-ip-address/" /etc/cloudera-scm-agent/config.ini
+fi
+#############################################
 
 #############################################
 # Output log for completion
 touch /tmp/init-complete
-echo Initialisation completed on this node >> init_script.log
+reboot
 #############################################

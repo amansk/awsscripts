@@ -9,6 +9,7 @@ master_count = 1
 slave_tag = Slave
 master_tag = Master
 init_script = <EC2 instance initialization script path>
+license_file = <Path to local CM license file>
 placement_group = <placement group name>
 rds_type = <RDS instance type>
 rds_name = <Name of RDS instance>

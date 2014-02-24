@@ -119,7 +119,7 @@ def get_template_string(path):
 	with open(path, 'r') as template:
 		return json.dumps(json.load(template))
 		
-def provision_instances(role, instance_type, count, key, cfn_stack, init_script, region, group):
+def provision_instances(role, instance_type, count, key, cfn_stack, init_script, region, group, server, license=None):
 	user_data = open(init_script)
 	subnet = get_stack_public_subnet(cfn_stack)
 	security_group = get_stack_cluster_sg(cfn_stack)
@@ -132,9 +132,17 @@ def provision_instances(role, instance_type, count, key, cfn_stack, init_script,
 		bdt.ephemeral_name=disk
 		bdm[dev] = bdt
 	root_dev_bdt = boto.ec2.blockdevicemapping.BlockDeviceType()
-	root_dev_bdt.size = 200
+	root_dev_bdt.size = 10
 	bdm[root_device[instance_type]] = root_dev_bdt
-	print "Provisioning {} instances".format(count)
+	print "Provisioning {} instances and linking to CM server on {}".format(count, server)
+	user_data_string = user_data.read()
+	if server == "localhost":
+		license_file = open(license)
+		license_string = license_file.read()
+		user_data_string = string.replace(user_data_string, "CMSERVER=false", "CMSERVER=true")
+		user_data_string = string.replace(user_data_string, "cm-license", license_string)
+	else:
+		user_data_string = string.replace(user_data_string, "master-node-ip-address", server)		
 	reservation = ec2conn.run_instances(ami_list[region][instance_type], 
 											key_name=key, 
 											instance_type = instance_type, 
@@ -142,7 +150,7 @@ def provision_instances(role, instance_type, count, key, cfn_stack, init_script,
 											max_count = count, 
 											network_interfaces = interfaces,
 											block_device_map = bdm, 
-											user_data = user_data.read())
+											user_data = user_data_string)
 											#placement_group = group)
 	for instance in reservation.instances:
 		status = instance.update()
@@ -153,7 +161,7 @@ def provision_instances(role, instance_type, count, key, cfn_stack, init_script,
 			instance.add_tag("Type", role)
 			instance.add_tag("CFN stack", cfn_stack)
 			instance.add_tag("Name", cfn_stack + "-" + role)
-			print "Created instance: %s " % instance.id
+			print "Created instance: {} with public IP: {} ".format(instance.id, instance.ip_address)
 		else:
 			print "Instance status for %s: %s" % (instance.id , status)
 			
@@ -193,6 +201,7 @@ def list_db(name):
 #Argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-c", "--config", help="Path of config file", required=True)
+parser.add_argument("-s", "--cmserver", help="IP address of CM server")
 parser.add_argument("action", help="Possible options: create_network_context, read_network_context, create_slaves, create_masters, list_slaves, list_masters, create_db, list_db")
 args = parser.parse_args()
 		
@@ -225,9 +234,10 @@ elif opt == 'create_slaves':
 						configs["slave_count"], 
 						configs["key"], 
 						configs["cfn_stack_name"],
-						configs["init_script"],
+						configs["script"],
 						configs["region"],
-						configs["placement_group"])				
+						configs["placement_group"],
+						args.cmserver)				
 elif opt == 'create_masters':
 	print "Creating master instances"
 	provision_instances(configs["master_tag"],
@@ -235,9 +245,11 @@ elif opt == 'create_masters':
 						configs["master_count"], 
 						configs["key"], 
 						configs["cfn_stack_name"],
-						configs["init_script"],
+						configs["script"],
 						configs["region"],
-						configs["placement_group"])
+						configs["placement_group"],
+						"localhost",
+						configs["license_file"])
 elif opt == 'create_db':
 	print "Creating RDS instance"
 	provision_rds(configs["rds_type"],
