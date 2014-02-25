@@ -26,6 +26,21 @@ The current implementation of the script performs steps 1 and 2. The installatio
 
 Sample Cloudformation templates are in the cfntemplates folder and the provisioning scripts are in the scripts folder. You have to write a config file as well. A sample config file is available in the scripts folder.
 
+### Setup
+
+To use these scripts, the following setup steps need to be done.
+
+1. Install Boto
+
+		pip install boto
+
+2. Set the following environment variables with your AWS credentials. Put them in your bashrc.
+
+		export AWS_ACCESS_KEY=<my_access_key>
+		export AWS_SECRET_KEY=<my_secret_key>
+
+3. Setup the configs for the scripts. These are the in the scripts/config file.
+
 ### Example usage
 
     $ ./setup.py -h
@@ -50,3 +65,20 @@ Sample Cloudformation templates are in the cfntemplates folder and the provision
 	$ ./setup.py list_slaves
 	
 	$ ./setup.py list_masters
+	
+#### Steps to spin up a cluster
+1. Set up configs
+
+2. Create network context (VPC, subnets, security groups)
+
+		./setup.py -c <config_file> create_network_context
+		
+3. Create master instance
+		
+		./setup.py -c <config_file> create_masters
+		
+4. Create slave instances and point them to the master instance, where the master instance's IP address is the output of the create_masters command
+
+		./setup.py -c <config_file> -s <master_ip_address> create_slaves
+
+Once the instances are provisioned, the setup script will be executed on them, which will create the mount points, create partitions, install Cloudera Manager server and agents, resize the root volumes and once all steps are done, reboot the instances. When the instances come back up, you'll be able to access the Cloudera Manager UI at http://master\_public\_ip\_address:7180
